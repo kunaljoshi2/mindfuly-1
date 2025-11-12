@@ -15,10 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/18/data # Persists data to a named volume
   web:
-    build:
-      context: .
-      args:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}
+    build: .
     depends_on:
       db:
         condition: service_healthy
@@ -34,6 +31,9 @@ services:
         - action: sync+restart
           path: ./
           target: /app/
+  secrets:
+    GITHUB_TOKEN:
+      file: ./github_token.txt
 
 volumes:
   postgres_data: # Defines the named volume for data persistence

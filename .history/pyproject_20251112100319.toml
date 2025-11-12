@@ -33,7 +33,6 @@ dependencies = [
     "pwdlib>=0.3.0",
     "pwdlib[Argon2]>=0.3.0",
 ]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -18,7 +18,7 @@ services:
     build:
       context: .
       args:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}
+        GIT
     depends_on:
       db:
         condition: service_healthy
