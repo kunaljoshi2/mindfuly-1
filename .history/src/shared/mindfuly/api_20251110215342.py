@@ -1,0 +1,41 @@
+from typing import List, Optional
+from fastapi import FastAPI, Depends, Response, Request, HTTPException, Header
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
+from shared.database import get_db
+import logging
+import os
+import json
+from pathlib import Path
+from datetime import datetime, timezone
+import asyncio
+
+import user_service_v2.api
+
+# File storage for avatars
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
+from PIL import Image
+from pydantic import EmailStr
+
+logger = logging.getLogger("uvicorn.error")
+
+app = FastAPI()
+
+@app.post("/users/", response_model=user_service_v2.api.User, status_code=201)
+async def create_user(
+    user: user_service_v2.api.UserSchema,
+    response: Response,
+    user_repo: user_service_v2.api.UserRepository = Depends(user_service_v2.api.get_user_repository),
+):
+     try:
+        tier = getattr(user, "tier", 1)
+        new_user = await user_repo.create(user.name, user.email, user.hashed_password, tier=tier)
+        if not new_user:
+            response.status_code = 409
+            return {"detail": "Item already exists"}
+        return {"user": UserSchema.from_db_model(new_user)}
+    except (IntegrityError, AttributeError):
+        response.status_code = 409
+        return {"detail": "Item already exists"}

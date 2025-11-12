@@ -17,8 +17,8 @@ services:
   web:
     build:
       context: .
-      args:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}
+      secrets:
+        - github_token
     depends_on:
       db:
         condition: service_healthy
