@@ -49,7 +49,8 @@ async def login_page(user_repo: UserRepositoryV2 = Depends(get_user_repository_v
                     """
                     
                     # ui.navigate.to('/{username}/overview')
-                    pass 
+                    ui.navigate.to(f"/users/{username_input.value}/home")
+                    
                 else:
                     error_label.text = "Invalid password. Please try again."
                     error_label.visible = True
@@ -86,6 +87,7 @@ async def signup_page(user_repo: UserRepositoryV2 = Depends(get_user_repository_
                 ui.navigate.to('/login')
 
             ui.button('Signup', on_click=handle_signup).classes('mt-4') 
+    
 
 
 @ui.page('/')
@@ -112,6 +114,8 @@ async def user_overview_page(user_repo: UserRepositoryV2 = Depends(get_user_repo
                             ui.label(f'Username: {user.name}').classes('text-lg font-bold')
                             ui.label(f'Email: {user.email}').classes('text-gray-600')
                             ui.label(f'ID: {user.id}').classes('text-gray-600')
+
+    
                         
     async def refresh_users():
         ui.navigate.reload()
@@ -120,9 +124,11 @@ async def user_overview_page(user_repo: UserRepositoryV2 = Depends(get_user_repo
 @ui.page("/users/{username}/home")
 async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(get_user_repository_v2)):
     
-    user = await user_repo.get_all()
-    if not user:
+    user = await user_repo.get_by_name(username)
+    if not user: 
         return ui.label("User not found.")
+    
+    
     
     #Navbar
     with ui.header().classes('justify-between items-center px-4 py-6 hover:shadow-lg transition-all duration-200'):
@@ -183,7 +189,7 @@ async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(
         with ui.card().classes("w-full p-6 shadow rounded-2xl items-center border"):
                 ui.label("What's on your mind today? ").classes("text-xl font-bold mb-4")
                 textarea = ui.textarea(placeholder="Write your notes here...").classes("w-full mb-4").props("outlined autogrow rows=4")
-                ui.button("SAVE NOTES").classes("bg-blue-500 text-white w-full py-2 rounded-lg")
+                ui.button("SAVE NOTES", on_click=lambda: ui.notify("Note Submitted!")).classes("bg-blue-500 text-white w-full py-2 rounded-lg")
 
 
 
