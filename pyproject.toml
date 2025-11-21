@@ -19,20 +19,20 @@ license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
     "alembic>=1.16.5",
+    "asyncio>=3.4.3",
+    "authlib>=1.6.5",
     "dotenv>=0.9.9",
     "email-validator>=2.0.0",
     "fastapi>=0.117.1",
+    "httpx>=0.24.0",
+    "jose>=1.0.0",
     "nicegui>=2.24.2",
+    "pillow>=10.1.0",
     "psycopg2-binary>=2.9.10",
+    "pwdlib[argon2]>=0.3.0",
     "pydantic>=2.11.9",
     "pytest-cov>=7.0.0",
     "sqlalchemy>=2.0.43",
-    "authlib>=1.6.5",
-    "asyncio>=3.4.3",
-    "Pillow>=10.1.0",
-    "pwdlib>=0.3.0",
-    "pwdlib[Argon2]>=0.3.0",
-    "jose>=1.0.0"
 ]
 
 [build-system]
