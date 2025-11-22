@@ -1,8 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
-Base = declarative_base()
+from user_service_v2.models.user import Base, User
 
 class MoodLog(Base):
     __tablename__ = "mood_logs"
