@@ -8,8 +8,8 @@ import copy
 from datetime import timedelta
 from typing import Optional
 
-from src.mindfuly.routes.users import create_user
-from user_service_v2.models.user import UserSchema, get_user_repository_v2, UserRepositoryV2
+from user_service_v2.models.user import get_user_repository_v2, UserRepositoryV2
+from src.shared.models import get_mood_log_repository_v2, MoodLogRepositoryV2
 from src.mindfuly.auth.jwt_utils import create_access_token, verify_token
 
 logger = logging.getLogger('uvicorn.error')
@@ -158,10 +158,8 @@ async def user_overview_page(user_repo: UserRepositoryV2 = Depends(get_user_repo
                             ui.label(f'ID: {user.id}').classes('text-gray-600')
 
 
-
-
 @ui.page("/users/{username}/home")
-async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(get_user_repository_v2)):
+async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(get_user_repository_v2), mood_log_repo = Depends(get_mood_log_repository_v2)):
     # Verify user is authenticated and accessing their own page
     authenticated_user = await require_auth(username)
     if not authenticated_user:
@@ -177,6 +175,7 @@ async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(
         ui.label('Mindfuly - Your Daily Wellness Tracker').classes('text-2xl font-bold')
         with ui.row().classes("gap-15 items-center"):
             ui.link("Overview", f"/users/{username}/home").classes("text-white text-lg no-underline")
+            ui.link("Journal", f"/users/{username}/journal").classes("text-white text-lg no-underline")
             ui.link("My Analytics", "#").classes("text-white text-lg no-underline")
             ui.link("Settings", f"/users/{username}/settings").classes("text-white text-lg no-underline")
             ui.button('Logout', on_click=lambda: handle_logout(), icon='logout').classes('bg-red-500 ml-4')
@@ -206,8 +205,27 @@ async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(
                 slider = ui.slider(min=1, max=5, value=5).classes("w-full")
                 ui.label().bind_text_from(slider, 'value').classes("text-xl font-bold mt-4 text-center")
 
+            with ui.card().classes("w-full items-center"):
+                ui.label("Why do you feel this way today?").classes("text-xl font-bold mb-4")
+                textarea = ui.textarea(placeholder="Write your notes here...").classes("w-full mb-4").props("outlined autogrow rows=4")
+
+                # Make it so that the textarea cannot be empty before submitting
+                async def submit_notes():
+                    if not textarea.value.strip():
+                        ui.notify("Please write something before submitting.", color="red")
+                    else:
+                        ui.notify("Note Submitted!", color="green")
+
+                        await mood_log_repo.create_mood_log(
+                            user_id=user.id,
+                            mood_value=slider.value,
+                            energy_level=slider.value,  # Assuming energy level is the same as mood for now
+                            notes=textarea.value,
+                            weather=None  # You can replace this with actual weather data if available
+                        )
+
             with ui.column().classes("w-full items-center mt-6"):
-                ui.button("Submit!", on_click=lambda: ui.notify("Mood submitted!")).classes("bg-blue-500 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-600")
+                ui.button("Submit!", on_click=submit_notes).classes("bg-blue-500 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-600")
 
         # Music
         with ui.card().classes("basis-1/4 p-6 shadow rounded-2xl h-full border items-center"):
@@ -231,12 +249,6 @@ async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(
             with ui.column().classes("bg-yellow-50 rounded-xl border p-4"):
                 ui.label("Daily Tip").classes("font-semibold mb-1")
                 ui.label("You feel happy on a certain day... (example)").classes("text-gray-700")
-
-    # Notes
-    with ui.card().classes("w-full max-w-7xl mx-auto mt-10 p-6 shadow rounded-2xl items-center border"):
-        ui.label("What's on your mind today?").classes("text-xl font-bold mb-4")
-        textarea = ui.textarea(placeholder="Write your notes here...").classes("w-full mb-4").props("outlined autogrow rows=4")
-        ui.button("SAVE NOTES", on_click=lambda: ui.notify("Note Submitted!")).classes("bg-blue-500 text-white w-full py-2 rounded-lg")
 
     
     
@@ -312,6 +324,51 @@ async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(
         }, 300);  // <-- 300ms delay FIXES NiceGUI timing issues
     ''')
 
+@ui.page("/users/{username}/journal")
+async def user_journal_page(username: str, user_repo: UserRepositoryV2 = Depends(get_user_repository_v2), mood_log_repo = Depends(get_mood_log_repository_v2)):
+
+    # Verify user is authenticated and accessing their own page
+    authenticated_user = await require_auth(username)
+    if not authenticated_user:
+        return
+    
+    user = await user_repo.get_by_name(username)
+    if not user: 
+        ui.label("User not found.")
+        return
+    
+    # Navbar with logout
+    with ui.header().classes('justify-between items-center px-4 py-6 hover:shadow-lg transition-all duration-200'):
+        ui.label('Mindfuly - Your Daily Wellness Tracker').classes('text-2xl font-bold')
+        with ui.row().classes("gap-15 items-center"):
+            ui.link("Overview", f"/users/{username}/home").classes("text-white text-lg no-underline")
+            ui.link("Journal", f"/users/{username}/journal").classes("text-white text-lg no-underline")
+            ui.link("My Analytics", "#").classes("text-white text-lg no-underline")
+            ui.link("Settings", f"/users/{username}/settings").classes("text-white text-lg no-underline")
+            ui.button('Logout', on_click=lambda: handle_logout(), icon='logout').classes('bg-red-500 ml-4')
+
+    async def handle_logout():
+        await ui.run_javascript('localStorage.clear()')
+        ui.notify('Logged out successfully', color='green')
+        ui.navigate.to('/home')
+
+    with ui.column().classes('w-full items-center mt-10 mb-8'):
+        ui.label(f"{username}'s Journal").classes('text-4xl font-bold text-center mb-1')
+
+    mood_logs = await mood_log_repo.get_mood_logs(user.id, limit=20)
+
+    # Placeholder for journal entries
+    with ui.column().classes('w-full max-w-4xl mx-auto'):
+        if not mood_logs:
+            ui.label("No journal entries found. Start logging your mood today!").classes("text-gray-600 italic")
+        for log in mood_logs:
+            with ui.card().classes("w-full mb-4 p-4 shadow rounded-lg border"):
+                with ui.row().classes("justify-between items-center mb-2"):
+                    ui.label(f"Mood Value: {log.mood_value}").classes("font-semibold")
+                    ui.label(f"Energy Level: {log.energy_level}").classes("font-semibold")
+                    ui.label(f"Logged on: {log.created_at.strftime('%Y-%m-%d %H:%M:%S')}").classes("text-gray-500 text-sm")
+                ui.label(f"Notes: {log.notes}").classes("mt-2")
+
 
 @ui.page("/users/{username}/settings")
 async def users_settings_page(username: str, user_repo: UserRepositoryV2 = Depends(get_user_repository_v2)):
@@ -322,6 +379,7 @@ async def users_settings_page(username: str, user_repo: UserRepositoryV2 = Depen
         ui.label('Mindfuly - Your Daily Wellness Tracker').classes('text-2xl font-bold')
         with ui.row().classes("gap-15 items-center"):
             ui.link("Overview", f"/users/{username}/home").classes("text-white text-lg no-underline")
+            ui.link("Journal", f"/users/{username}/journal").classes("text-white text-lg no-underline")
             ui.link("My Analytics", "#").classes("text-white text-lg no-underline")
             ui.link("Settings", f"/users/{username}/settings").classes("text-white text-lg no-underline")
             ui.button('Logout', on_click=lambda: handle_logout(), icon='logout').classes('bg-red-500 ml-4')
@@ -353,4 +411,3 @@ async def users_settings_page(username: str, user_repo: UserRepositoryV2 = Depen
                 with ui.card().classes("w-full p-8 border shadow rounded-2xl"):
                     ui.label("Danger Zone").classes("text-xl font-bold mb-4 text-red-500")
                     ui.button("Delete Account")
-
