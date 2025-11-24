@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse
 from nicegui import ui, app
 from pydantic import parse_obj_as
 from contextlib import contextmanager
-import logging
+import logging, asyncio
 import copy
 from datetime import datetime, timedelta
 from typing import Optional
@@ -68,7 +68,18 @@ async def login_page(user_repo: UserRepositoryV2 = Depends(get_user_repository_v
                 user = await user_repo.get_by_name(username_input.value)
 
                 if user == None:
-                    ui.notify('Not a valid user!', color='red')
+                    with ui.dialog() as dialog:
+                        with ui.card().classes("p-6 rounded-xl shadow-lg w-[450px]"):
+        
+                            ui.label("This account does not exist. Create an account?").classes("text-lg font-medium mb-6 text-center")
+
+                            with ui.row().classes("w-full justify-center gap-4"):
+                                ui.button("Cancel", on_click=dialog.close).classes("bg-gray-300 text-white px-6")
+
+                                ui.button("Create Account", on_click=lambda: ui.navigate.to('/signup')).classes("bg-blue-500 text-white px-6")
+
+                    dialog.open()
+
                     return
 
                 if await user_repo.verify_password(user, password_input.value):
@@ -592,11 +603,49 @@ async def users_settings_page(username: str, user_repo: UserRepositoryV2 = Depen
         return
     
     user = await user_repo.get_by_name(username)
-    if not user: 
-        ui.label("User not found.")
-        return
     
-    # Navbar with logout
+    async def handle_save():
+        current_user = await user_repo.get_by_name(username)
+
+        if not current_user:
+            ui.notify("User not found", color="red")
+            return
+
+        new_name = name_input.value.strip()
+        new_email = email_input.value.strip()
+
+        updated_user = await user_repo.update_user(
+            current_user,
+            new_name or None,
+            new_email or None,
+        )
+
+        ui.notify("User Information Updated!", color="green")
+
+        await asyncio.sleep(0.7) #gives the ui.notify some time to display its message before the URL changes
+
+        if updated_user.name != username:
+            ui.navigate.to(f"/users/{updated_user.name}/settings")
+        else:
+            ui.navigate.reload()
+
+
+    async def handle_delete():
+        current_user = await user_repo.get_by_name(username)
+
+        if not current_user:
+            ui.notify("User not found", color="red")
+            return
+    
+        await user_repo.delete(current_user.id)
+
+        ui.notify("User Deleted Successfully!")
+        
+        await asyncio.sleep(0.7)
+        await ui.run_javascript("localStorage.clear()")
+        ui.navigate.to("/home")
+
+
     with ui.header().classes('justify-between items-center px-4 py-6 hover:shadow-lg transition-all duration-200'):
         ui.label('Mindfuly - Your Daily Wellness Tracker').classes('text-2xl font-bold')
         with ui.row().classes("gap-15 items-center"):
@@ -626,10 +675,22 @@ async def users_settings_page(username: str, user_repo: UserRepositoryV2 = Depen
                 ui.label("Update Information").classes("text-xl font-bold mb-4")
                 name_input = ui.input("Display name", value=user.name).classes("mb-3 w-full")
                 email_input = ui.input("Email", value=user.email).classes("mb-3 w-full")
-                ui.button("Save changes", on_click=lambda: ui.notify("Not wired yet"))
+                ui.button("Save changes", on_click=handle_save)
         
     
             with ui.column().classes("basis-1/2"):
                 with ui.card().classes("w-full p-8 border shadow rounded-2xl"):
                     ui.label("Danger Zone").classes("text-xl font-bold mb-4 text-red-500")
-                    ui.button("Delete Account")
+
+
+                    def show_delete_confirmation():
+                        with ui.dialog() as dialog:
+                            with ui.card():
+                                ui.label("Are you sure?")
+                                with ui.row():
+                                    ui.button("Cancel", on_click=dialog.close)
+                                    ui.button("Delete", on_click=handle_delete)
+                        dialog.open()
+                    
+                    ui.button("Delete Account", on_click=show_delete_confirmation)
+
