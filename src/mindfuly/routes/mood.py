@@ -1,95 +1,193 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from typing import List, Optional
 
 from src.shared.database import get_db
-from src.shared.models import MoodLog
+from src.shared.models import MoodLog, MoodLogCreate, MoodLogResponse, get_mood_log_repository_v2, MoodLogRepositoryV2
 from user_service_v2.models.user import get_user_repository_v2, UserRepositoryV2
 
 router = APIRouter(prefix="/mood", tags=["Mood"])
 
-class MoodLogCreate(BaseModel):
-    username: str
-    mood_value: int
-    energy_level: int
-    notes: Optional[str] = None
-    weather: Optional[str] = None
-
-class MoodLogResponse(BaseModel):
-    id: int
-    user_id: int
-    mood_value: int
-    energy_level: int
-    notes: Optional[str]
-    weather: Optional[str]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-@router.post("/log", response_model=MoodLogResponse)
+@router.post("/log", status_code=201)
 async def create_mood_log(
     mood_data: MoodLogCreate,
-    db: Session = Depends(get_db),
-    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2)
+    response: Response,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
+):
+    
+    user = await user_repo.get_by_name(mood_data.username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        mood_log = await mood_log_repo.create_mood_log(
+            user_id=user.id,
+            mood_value=mood_data.mood_value,
+            energy_level=mood_data.energy_level,
+            notes=mood_data.notes,
+            weather=mood_data.weather
+        )
+
+        return {"mood_log": MoodLogResponse.from_db_model(mood_log)}
+    except (IntegrityError, AttributeError):
+        response.status_code = 409
+        return {"detail": "Something went wrong"}
+    
+# Edit the latest mood log for a user
+@router.put("/edit_log", status_code=200)
+async def edit_mood_log(
+    mood_data: MoodLogCreate,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
 ):
     user = await user_repo.get_by_name(mood_data.username)
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    mood_log = MoodLog(
-        user_id=user.id,
-        mood_value=mood_data.mood_value,
-        energy_level=mood_data.energy_level,
-        notes=mood_data.notes,
-        weather=mood_data.weather
-    )
+    latest_log = await mood_log_repo.get_latest_mood_log(user.id)
+    if not latest_log:
+        raise HTTPException(status_code=404, detail="No mood log found to edit")
     
-    db.add(mood_log)
-    db.commit()
-    db.refresh(mood_log)
-    
-    return mood_log
+    try:
+        updated_log = await mood_log_repo.edit_latest_mood_log(
+            user_id=user.id,
+            mood_value=mood_data.mood_value,
+            energy_level=mood_data.energy_level,
+            notes=mood_data.notes
+        )
 
-@router.get("/logs/{username}", response_model=List[MoodLogResponse])
-async def get_mood_logs(
+        return {"mood_log": MoodLogResponse.from_db_model(updated_log)}
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Could not edit mood log")
+    
+@router.get("/most_recent_log_date/{username}")
+async def get_most_recent_log_date(
     username: str,
-    limit: int = 10,
-    db: Session = Depends(get_db),
-    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2)
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2),
 ):
     user = await user_repo.get_by_name(username)
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    mood_logs = db.query(MoodLog).filter(
-        MoodLog.user_id == user.id
-    ).order_by(MoodLog.created_at.desc()).limit(limit).all()
+    most_recent_date = await mood_log_repo.get_most_recent_log_date(user.id)
+    if not most_recent_date:
+        return {"most_recent_log_date": None}
     
-    return mood_logs
+    return {"most_recent_log_date": most_recent_date.isoformat()}
 
+# Get the latest mood log for a user
+@router.get("/latest_log/{username}")
+async def get_latest_mood_log(
+    username: str,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2),
+):
+    user = await user_repo.get_by_name(username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    latest_log = await mood_log_repo.get_latest_mood_log(user.id)
+    if not latest_log:
+        return {"latest_mood_log": None}
+    
+    return {"latest_mood_log": MoodLogResponse.from_db_model(latest_log)}
+    
+@router.get("/logs/{username}")
+async def get_mood_logs(
+    username: str,
+    limit: int = 20,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2),
+):
+    user = await user_repo.get_by_name(username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    mood_logs = await mood_log_repo.get_mood_logs(user.id, limit=limit)
+    return {"mood_logs": [MoodLogResponse.from_db_model(log) for log in mood_logs]}
+
+# Get average mood, energy level, and total logs for a user
 @router.get("/stats/{username}")
 async def get_mood_stats(
     username: str,
-    db: Session = Depends(get_db),
-    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2)
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
 ):
     user = await user_repo.get_by_name(username)
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    from sqlalchemy import func
+    stats = await mood_log_repo.get_mood_stats(user.id)
+    return {"mood_stats": stats}
+
+# Get average mood, energy level, and total logs for all days of the week
+@router.get("/weekly_stats/{username}")
+async def get_weekly_mood_stats(
+    username: str,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
+):
+    user = await user_repo.get_by_name(username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     
-    stats = db.query(
-        func.avg(MoodLog.mood_value).label('avg_mood'),
-        func.avg(MoodLog.energy_level).label('avg_energy'),
-        func.count(MoodLog.id).label('total_logs')
-    ).filter(MoodLog.user_id == user.id).first()
+    # TODO: Implement get_weekly_mood_stats in MoodLogRepositoryV2
+    weekly_stats = await mood_log_repo.get_weekly_mood_stats(user.id)
+    return {"weekly_mood_stats": weekly_stats}
+
+# Get average mood, energy level, and total logs for each weather condition
+@router.get("/weather_stats/{username}")
+async def get_weather_mood_stats(
+    username: str,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
+):
+    user = await user_repo.get_by_name(username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     
-    return {
-        "average_mood": round(float(stats.avg_mood or 0), 2),
-        "average_energy": round(float(stats.avg_energy or 0), 2),
-        "total_logs": stats.total_logs or 0
-    }
+    weather_stats = await mood_log_repo.get_weather_mood_stats(user.id)
+    return {"weather_mood_stats": weather_stats}
+
+# Get running means for mood and energy levels for every day
+@router.get("/running_means/{username}")
+async def get_running_means(
+    username: str,
+    limit: int = 20,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
+):
+    user = await user_repo.get_by_name(username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    running_means = await mood_log_repo.get_running_means(user.id, limit=limit)
+    return {"running_means": running_means}
+
+# Clear all mood logs for a user
+@router.delete("/clear_logs/{username}", status_code=204)
+async def clear_mood_logs(
+    username: str,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
+):
+    user = await user_repo.get_by_name(username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await mood_log_repo.clear_mood_logs(user.id)
+    return Response(status_code=204)

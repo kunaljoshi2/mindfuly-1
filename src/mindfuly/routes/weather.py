@@ -32,4 +32,3 @@ async def get_weather(lat: float, lon: float):
         raise HTTPException(status_code=resp.status_code, detail="Weather API error")
     
     return resp.json()
-

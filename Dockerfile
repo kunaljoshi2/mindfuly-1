@@ -7,6 +7,8 @@ WORKDIR /app
 RUN pip install -e .
 RUN pip install python-jose[cryptography]
 
+RUN sed -i 's/\r$//' scripts/docker-entrypoint.sh
+
 ARG GITHUB_TOKEN
 
 RUN if [ -z "$GITHUB_TOKEN" ]; then \
