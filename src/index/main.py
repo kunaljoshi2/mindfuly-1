@@ -433,8 +433,8 @@ async def user_home_screen(username: str, user_repo: UserRepositoryV2 = Depends(
                     ui.label("😴")
                     ui.label("🥱")
                     ui.label("😐")
-                    ui.label("😲")
-                    ui.label("🫨")
+                    ui.label("😲") 
+                    ui.label("🤩")
 
                 with ui.column().classes('items-center w-full'):
                     energy_slider = ui.slider(min=1, max=5, value=5).classes("w-full")
@@ -1406,8 +1406,8 @@ async def users_settings_page(username: str, user_repo: UserRepositoryV2 = Depen
                             ui.label("Are you sure you want to delete your account?").classes("text-lg font-medium mb-6 text-center text-gray-800")
                             ui.label("This action cannot be undone.").classes("text-sm text-gray-600 mb-6 text-center")
                             with ui.row().classes("w-full justify-center gap-4"):
+                                ui.button("Delete", on_click=lambda: (handle_delete())).classes("bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg")
                                 ui.button("Cancel", on_click=dialog.close).classes("bg-gray-300 hover:bg-gray-400 text-white px-6 py-2 rounded-lg")
-                                ui.button("Delete", on_click=lambda: (handle_delete(), dialog.close())).classes("bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg")
                         dialog.open()
                 
                 ui.button("🗑️ Delete Account", on_click=show_delete_confirmation).classes('bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg')

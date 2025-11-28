@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
+import random
 
 from src.shared.database import get_db
 from src.shared.models import MoodLog, MoodLogCreate, MoodLogResponse, get_mood_log_repository_v2, MoodLogRepositoryV2
@@ -191,3 +192,35 @@ async def clear_mood_logs(
     
     await mood_log_repo.clear_mood_logs(user.id)
     return Response(status_code=204)
+
+
+#Create large log of notes for testing
+@router.post("/test_logs/{username}", status_code=204)
+async def test_mood_logs(
+    username: str,
+    response: Response,
+    user_repo: UserRepositoryV2 = Depends(get_user_repository_v2),
+    mood_log_repo: MoodLogRepositoryV2 = Depends(get_mood_log_repository_v2)
+):
+    
+    user = await user_repo.get_by_name(username)
+    randWeather = ['light rain', 'heavy rain', 'partly cloudy', 'sunny', 'overcast', 'rain of spiders', 'purple rain', 'chocolate rain', 'hurricane', 'tornado']
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        for x in range(100):
+            await mood_log_repo.create_log_on_date(
+                user_id=user.id,
+                mood_value=random.randint(1,5),
+                energy_level=random.randint(1,5),
+                date=datetime.now() - timedelta(days=x),
+                notes= "Test log #" + str(x),
+                weather=str(x) + "°C – " + random.choice(randWeather)
+            )
+        
+        return {"Job Done!", ":)"}
+    except (IntegrityError, AttributeError):
+        response.status_code = 409
+        return {"detail": "Something went wrong"}
