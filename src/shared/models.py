@@ -251,6 +251,36 @@ class MoodLogRepositoryV2():
         )
 
         self.session.commit()
+    
+    async def create_log_on_date(self,
+                                user_id: int,
+                                mood_value: int,
+                                energy_level: int,
+                                date: datetime,
+                                notes: Optional[str] = None,
+                                weather: Optional[str] = None):
+        try:
+            self.session.execute(insert(MoodLog), [{
+                "user_id": user_id,
+                "mood_value": mood_value,
+                "energy_level": energy_level,
+                "notes": notes,
+                "weather": weather,
+                "created_at": date
+            }])
+            self.session.commit()
+            return MoodLog(
+                user_id=user_id,
+                mood_value=mood_value,
+                energy_level=energy_level,
+                notes=notes,
+                weather=weather,
+                created_at=date
+            )
+        except IntegrityError:
+            self.session.rollback()
+            return None
+
 
 def get_mood_log_repository_v2(db: Session = Depends(get_db)) -> MoodLogRepositoryV2:
     return MoodLogRepositoryV2(db)
