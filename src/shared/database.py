@@ -11,9 +11,8 @@ def get_db():
         host = os.environ['DATABASE_HOST']
         username = os.environ['DATABASE_USER']
         password = os.environ['DATABASE_PASSWORD']
-        dbname = os.environ['DATABASE_NAME']
         
-        DATABASE_URL = f"postgresql+psycopg2://{username}:{password}@{host}:5432/{dbname}"
+        DATABASE_URL = f"postgresql+psycopg2://{username}:{password}@{host}:5432/"
         
         engine = create_engine(DATABASE_URL)
 
